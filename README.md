@@ -1,0 +1,1 @@
+A very basic symbolizer service sitting between profiler and backend, for learning purposes for now.

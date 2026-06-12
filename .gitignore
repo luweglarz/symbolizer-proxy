@@ -1,0 +1,14 @@
+CLAUDE.md
+
+# Build output
+bin/
+
+# Generated test fixtures (rebuild with `make fixtures`)
+internal/server/testdata/
+
+# Runtime debuginfo store (uploaded binaries, keyed by build-id)
+debug_info/
+
+# Local build artifacts
+a.out
+main
