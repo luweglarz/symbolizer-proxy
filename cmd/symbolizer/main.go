@@ -15,7 +15,7 @@ func main() {
 	sym := symbolizer.New()
 	pyroscopeURL := os.Getenv("PYROSCOPE_URL")
 	if pyroscopeURL == "" {
-		pyroscopeURL = "http://localhost:4040" // default for local runs
+		pyroscopeURL = "http://localhost:4040"
 	}
 	exporter := exporter.NewPyroscope(pyroscopeURL)
 	serv := server.New(sym, exporter, ":8080", logger)

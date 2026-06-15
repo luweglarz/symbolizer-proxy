@@ -62,8 +62,8 @@ func (s *Symbolizer) resolveLocation(prof *cprofiles.ExportProfilesServiceReques
 			prof.Dictionary.FunctionTable = append(prof.Dictionary.FunctionTable, &profilespb.Function{ // add a Function to the FunctionTable for this symbol
 				NameStrindex:       nameIdx,
 				SystemNameStrindex: nameIdx,
-				FilenameStrindex:   0, // Filename is not available in this context
-				StartLine:          0, // StartLine is not available in this context
+				FilenameStrindex:   0,
+				StartLine:          0,
 			})
 			loc.Lines = append(loc.Lines, &profilespb.Line{ // add a Line to the Location for this symbol
 				FunctionIndex: int32(len(prof.Dictionary.FunctionTable) - 1),
@@ -85,7 +85,6 @@ func (s *Symbolizer) symbolizeLocations(prof *cprofiles.ExportProfilesServiceReq
 }
 
 func (s *Symbolizer) Symbolize(prof *cprofiles.ExportProfilesServiceRequest) {
-
 	for _, r := range prof.ResourceProfiles {
 		for _, sp := range r.ScopeProfiles {
 			for _, p := range sp.Profiles {

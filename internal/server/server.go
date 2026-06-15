@@ -64,7 +64,7 @@ func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
 	s.sym.Symbolize(prof)
 
 	resp := &cprofiles.ExportProfilesServiceResponse{}
-	//_ = out // TODO(phase 6): write `out` back into the response / forward to Pyroscope
+
 	payload, err := proto.Marshal(resp)
 
 	if err != nil {
@@ -105,7 +105,6 @@ func (s *Server) HandleDebugInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	elfFile, err := elf.NewFile(tmpFile)
 	if err != nil {
-		// Client fault: they uploaded something that isn't a valid ELF.
 		s.log.Debug("rejected non-ELF upload", "err", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
