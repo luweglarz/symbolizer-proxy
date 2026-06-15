@@ -11,20 +11,24 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// PyroscopeExporter is an implementation of the Exporter interface for Pyroscope.
-type PyroscopeExporter struct {
-	client   *http.Client // or a real pyroscope SDK client
+type OTLPHTTPConfig struct {
+	Endpoint string
+	Timeout  time.Duration
+}
+
+type OTLPHTTPExporter struct {
+	client   *http.Client
 	endpoint string
 }
 
-func NewPyroscope(endpoint string) *PyroscopeExporter {
-	return &PyroscopeExporter{
-		client:   &http.Client{Timeout: 10 * time.Second},
-		endpoint: endpoint,
+func NewOTLPHTTP(cfg OTLPHTTPConfig) *OTLPHTTPExporter {
+	return &OTLPHTTPExporter{
+		client:   &http.Client{Timeout: cfg.Timeout},
+		endpoint: cfg.Endpoint,
 	}
 }
 
-func (e *PyroscopeExporter) Export(ctx context.Context, req *cprofiles.ExportProfilesServiceRequest) error {
+func (e *OTLPHTTPExporter) Export(ctx context.Context, req *cprofiles.ExportProfilesServiceRequest) error {
 	payload, err := proto.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("failed to marshal profiles request: %w", err)

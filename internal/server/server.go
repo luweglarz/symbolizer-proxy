@@ -16,6 +16,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type Config struct {
+	Addr string
+}
+
 type Server struct {
 	sym      *symbolizer.Symbolizer
 	exporter exporter.Exporter
@@ -23,11 +27,11 @@ type Server struct {
 	log      *slog.Logger
 }
 
-func New(sym *symbolizer.Symbolizer, exporter exporter.Exporter, addr string, logger *slog.Logger) *Server {
+func New(sym *symbolizer.Symbolizer, exporter exporter.Exporter, cfg Config, logger *slog.Logger) *Server {
 	return &Server{
 		sym:      sym,
 		exporter: exporter,
-		addr:     addr,
+		addr:     cfg.Addr,
 		log:      logger.With("component", "server"),
 	}
 }
