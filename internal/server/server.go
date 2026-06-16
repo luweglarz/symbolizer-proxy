@@ -5,6 +5,7 @@ import (
 	"debug/elf"
 	"encoding/binary"
 	"encoding/hex"
+	"flag"
 	"io"
 	"log/slog"
 	"net/http"
@@ -34,6 +35,10 @@ func New(sym *symbolizer.Symbolizer, exporter exporter.Exporter, cfg Config, log
 		addr:     cfg.Addr,
 		log:      logger.With("component", "server"),
 	}
+}
+
+func (c *Config) RegisterFlags(fs *flag.FlagSet) {
+	fs.StringVar(&c.Addr, "server.addr", ":8080", "listen address")
 }
 
 func (s *Server) Start() error {

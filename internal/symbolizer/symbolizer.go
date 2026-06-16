@@ -3,7 +3,6 @@ package symbolizer
 import (
 	"debug/elf"
 	"log/slog"
-	"os"
 
 	cprofiles "go.opentelemetry.io/proto/otlp/collector/profiles/v1development"
 	profilespb "go.opentelemetry.io/proto/otlp/profiles/v1development"
@@ -13,9 +12,9 @@ type Symbolizer struct {
 	log *slog.Logger
 }
 
-func New() *Symbolizer {
+func New(logger *slog.Logger) *Symbolizer {
 	s := &Symbolizer{}
-	s.log = slog.New(slog.NewTextHandler(os.Stderr, nil)).With("component", "symbolizer")
+	s.log = logger.With("component", "symbolizer")
 	return s
 }
 
