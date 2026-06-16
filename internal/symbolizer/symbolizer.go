@@ -53,11 +53,13 @@ func (s *Symbolizer) resolveLocation(prof *cprofiles.ExportProfilesServiceReques
 	s.log.Debug("opened ELF file", "build_id", buildID, "num_symbols", len(symbs), "location_address", loc.Address, "mapping_index", loc.MappingIndex)
 	for _, sym := range symbs { // loop through symbols to find one that matches the location's address
 		normalizedAddr := normalizeAddr(loc.Address, prof.Dictionary.MappingTable[loc.MappingIndex])
+		// TODO: remove logging of symbol information once symbolization is working correctly
 		s.log.Debug("checking symbol", "symbol_name", sym.Name, "symbol_value", sym.Value, "symbol_size", sym.Size, "normalized_location_address", normalizedAddr)
 		if sym.Value <= normalizedAddr && normalizedAddr < sym.Value+sym.Size {
 			prof.Dictionary.StringTable = append(prof.Dictionary.StringTable, sym.Name) // create a new entry in the string table for this symbol's name
 			nameIdx := int32(len(prof.Dictionary.StringTable) - 1)
 			s.log.Info("symbolized location", "location_address", loc.Address, "mapping_index", loc.MappingIndex, "symbol_name", prof.Dictionary.StringTable[nameIdx])
+			// TODO: avoid bloating dictionary with duplicate function entries for the same symbol name mayb consider using a map to track existing function names and their indices
 			prof.Dictionary.FunctionTable = append(prof.Dictionary.FunctionTable, &profilespb.Function{ // add a Function to the FunctionTable for this symbol
 				NameStrindex:       nameIdx,
 				SystemNameStrindex: nameIdx,
@@ -84,6 +86,10 @@ func (s *Symbolizer) symbolizeLocations(prof *cprofiles.ExportProfilesServiceReq
 }
 
 func (s *Symbolizer) Symbolize(prof *cprofiles.ExportProfilesServiceRequest) {
+	if prof == nil || prof.Dictionary == nil || prof.ResourceProfiles == nil || len(prof.Dictionary.StackTable) == 0 {
+		s.log.Debug("no stack traces to symbolize")
+		return
+	}
 	for _, r := range prof.ResourceProfiles {
 		for _, sp := range r.ScopeProfiles {
 			for _, p := range sp.Profiles {

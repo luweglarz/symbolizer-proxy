@@ -84,6 +84,7 @@ func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/x-protobuf")
 	w.WriteHeader(http.StatusOK)
 	w.Write(payload)
+	// TODO: decides exporter after or before response to profiler is sent and consider asynchronous export
 	if err := s.exporter.Export(r.Context(), prof); err != nil {
 		s.log.Error("export to pyroscope failed", "err", err)
 	}
