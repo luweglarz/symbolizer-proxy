@@ -27,7 +27,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	sym := symbolizer.New(logger)
+	symSource := &symbolizer.FileSource{} // for now top level source
+	sym := symbolizer.New(logger, symSource)
 
 	srv := server.New(sym, exp, srvCfg, logger)
 
