@@ -67,3 +67,50 @@ func testResolveLocation(t *testing.T, buildID string, addr uint64) {
 func TestResolveLocation(t *testing.T) {
 	testResolveLocation(t, "foo", 0x1000)
 }
+
+func TestResolveLocationDemangles(t *testing.T) {
+	tests := []struct {
+		name           string
+		symName        string // what's in the ELF symbol table
+		wantName       string // expected human-readable name (NameStrindex)
+		wantSystemName string // expected raw linker name (SystemNameStrindex)
+	}{
+		{
+			name:           "mangled C++ symbol",
+			symName:        "_Z3fooi",
+			wantName:       "foo(int)",
+			wantSystemName: "_Z3fooi",
+		},
+		{
+			name:           "plain unmangled symbol",
+			symName:        "main.main",
+			wantName:       "main.main",
+			wantSystemName: "main.main",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			prof := profWithBuildID("process.executable.build_id.gnu", "testbuild")
+			loc := &profilespb.Location{MappingIndex: 0, Address: 0x1000}
+			symSource := &fakeSource{symbols: []elf.Symbol{{Name: tc.symName, Value: 0x1000, Size: 0x10}}}
+			s := New(slog.Default(), symSource)
+
+			s.resolveLocation(prof, loc, make(map[string]int32))
+
+			if len(loc.Lines) != 1 {
+				t.Fatalf("expected 1 line appended, got %d", len(loc.Lines))
+			}
+			fn := prof.Dictionary.FunctionTable[loc.Lines[0].FunctionIndex]
+			gotName := prof.Dictionary.StringTable[fn.NameStrindex]
+			gotSystemName := prof.Dictionary.StringTable[fn.SystemNameStrindex]
+
+			if gotName != tc.wantName {
+				t.Errorf("NameStrindex => %q, want %q", gotName, tc.wantName)
+			}
+			if gotSystemName != tc.wantSystemName {
+				t.Errorf("SystemNameStrindex => %q, want %q", gotSystemName, tc.wantSystemName)
+			}
+		})
+	}
+}

@@ -3,6 +3,7 @@ module github.com/luweglarz/symbolizer-proxy
 go 1.25.3
 
 require (
+	github.com/ianlancetaylor/demangle v0.0.0-20260505044615-1ff4bf46051f
 	go.opentelemetry.io/proto/otlp v1.10.0
 	go.opentelemetry.io/proto/otlp/collector/profiles/v1development v0.3.0
 	go.opentelemetry.io/proto/otlp/profiles/v1development v0.3.0

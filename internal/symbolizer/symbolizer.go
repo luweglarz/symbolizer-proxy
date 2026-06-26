@@ -4,6 +4,7 @@ import (
 	"debug/elf"
 	"log/slog"
 
+	"github.com/ianlancetaylor/demangle"
 	cprofiles "go.opentelemetry.io/proto/otlp/collector/profiles/v1development"
 	profilespb "go.opentelemetry.io/proto/otlp/profiles/v1development"
 )
@@ -48,6 +49,8 @@ func getBuildID(prof *cprofiles.ExportProfilesServiceRequest, idx int32) string 
 }
 
 func normalizeAddr(addr uint64, mapping *profilespb.Mapping) uint64 {
+	// normalize the address by subtracting the mapping's memory start and adding the file offset
+	// example : if the mapping's memory start is 0x1000 and the file offset is 0x200, then an address of 0x1200 would be normalized to 0x400 (0x1200 - 0x1000 + 0x200)
 	return addr - mapping.MemoryStart + mapping.FileOffset
 }
 
@@ -72,25 +75,34 @@ func (s *Symbolizer) resolveLocation(prof *cprofiles.ExportProfilesServiceReques
 		}
 	}
 	if matched == nil {
-		return // no symbol matched the location's address
+		return
 	}
 	mapKey := buildID + ":" + matched.Name
 	// check if the symbol has already been resolved
 	fnIdx, ok := resolved[mapKey]
 	if !ok {
+		// TODO: consider caching the demangled name to avoid repeated demangling for the same symbol
+		// TODO: consider ability to configure filter options for demangling
+		demangled := demangle.Filter(matched.Name)
 		// fill dictionnary
 		prof.Dictionary.StringTable = append(prof.Dictionary.StringTable, matched.Name)
-		stringIdx := int32(len(prof.Dictionary.StringTable) - 1)
+		nameIdx := int32(len(prof.Dictionary.StringTable) - 1)
+		systemNameIdx := nameIdx
+		if demangled != matched.Name {
+			prof.Dictionary.StringTable = append(prof.Dictionary.StringTable, demangled)
+			systemNameIdx = int32(len(prof.Dictionary.StringTable) - 1)
+		}
 		prof.Dictionary.FunctionTable = append(prof.Dictionary.FunctionTable, &profilespb.Function{ // add a Function to the FunctionTable for this symbol
-			NameStrindex:       stringIdx,
-			SystemNameStrindex: stringIdx,
+			NameStrindex:       systemNameIdx,
+			SystemNameStrindex: nameIdx,
 			FilenameStrindex:   0,
 			StartLine:          0,
 		})
 		fnIdx = int32(len(prof.Dictionary.FunctionTable) - 1)
 		resolved[mapKey] = fnIdx
 	}
-	loc.Lines = append(loc.Lines, &profilespb.Line{ // add a Line to the Location for this symbol
+	// add a Line to the Location for this symbol
+	loc.Lines = append(loc.Lines, &profilespb.Line{
 		FunctionIndex: fnIdx,
 		Line:          0,
 	})
@@ -98,7 +110,8 @@ func (s *Symbolizer) resolveLocation(prof *cprofiles.ExportProfilesServiceReques
 
 func (s *Symbolizer) symbolizeLocations(prof *cprofiles.ExportProfilesServiceRequest, stckIdx int32, resolved map[string]int32) {
 	stckTable := prof.Dictionary.StackTable[stckIdx]
-	for _, locationIdx := range stckTable.LocationIndices { // loop through the stack's locations
+	// loop through the stack's locations
+	for _, locationIdx := range stckTable.LocationIndices {
 		loc := prof.Dictionary.LocationTable[locationIdx]
 		if len(loc.Lines) == 0 { // need symbolization
 			s.resolveLocation(prof, loc, resolved)
@@ -115,7 +128,7 @@ func (s *Symbolizer) Symbolize(prof *cprofiles.ExportProfilesServiceRequest) {
 	for _, r := range prof.ResourceProfiles {
 		for _, sp := range r.ScopeProfiles {
 			for _, p := range sp.Profiles {
-				for _, samp := range p.Samples { // samples have stack traces
+				for _, samp := range p.Samples {
 					s.symbolizeLocations(prof, samp.StackIndex, resolved)
 				}
 			}
