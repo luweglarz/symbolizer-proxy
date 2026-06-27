@@ -14,9 +14,11 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	var expCfg exporter.Config
+	var symCfg symbolizer.Config
 	var srvCfg server.Config
 
 	expCfg.RegisterFlags(flag.CommandLine)
+	symCfg.RegisterFlags(flag.CommandLine)
 	srvCfg.RegisterFlags(flag.CommandLine)
 
 	flag.Parse()
@@ -28,7 +30,12 @@ func main() {
 	}
 
 	symSource := &symbolizer.FileSource{} // for now top level source
-	sym := symbolizer.New(logger, symSource)
+	sym := symbolizer.New(logger, symSource, symCfg)
+	if sym == nil {
+		logger.Error("failed to create symbolizer")
+		os.Exit(1)
+	}
+	defer sym.Close()
 
 	srv := server.New(sym, exp, srvCfg, logger)
 

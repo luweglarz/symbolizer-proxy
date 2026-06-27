@@ -2,8 +2,11 @@ package symbolizer
 
 import (
 	"debug/elf"
+	"flag"
 	"log/slog"
+	"unsafe"
 
+	"github.com/dgraph-io/ristretto/v2"
 	"github.com/ianlancetaylor/demangle"
 	cprofiles "go.opentelemetry.io/proto/otlp/collector/profiles/v1development"
 	profilespb "go.opentelemetry.io/proto/otlp/profiles/v1development"
@@ -11,11 +14,6 @@ import (
 
 type symbolSource interface {
 	Symbols(buildID string) ([]elf.Symbol, error)
-}
-
-type Symbolizer struct {
-	log    *slog.Logger
-	source symbolSource
 }
 
 type FileSource struct{}
@@ -29,11 +27,43 @@ func (fs *FileSource) Symbols(buildID string) ([]elf.Symbol, error) {
 	return file.Symbols()
 }
 
-func New(logger *slog.Logger, source symbolSource) *Symbolizer {
+type Config struct {
+	CacheNumCounters int64
+	CacheSizeMB      int64
+}
+
+func (c *Config) RegisterFlags(fs *flag.FlagSet) {
+	fs.Int64Var(&c.CacheNumCounters, "symbolizer.cache_num_counters", 1e7, "symbolizer cache number of counters")
+	fs.Int64Var(&c.CacheSizeMB, "symbolizer.cache_size_mb", 2048, "symbolizer cache size in MB")
+}
+
+type Symbolizer struct {
+	log      *slog.Logger
+	source   symbolSource
+	elfCache *ristretto.Cache[string, []elf.Symbol]
+	config   Config
+}
+
+func New(logger *slog.Logger, source symbolSource, config Config) *Symbolizer {
 	s := &Symbolizer{}
 	s.log = logger.With("component", "symbolizer")
 	s.source = source
+	var err error
+	s.elfCache, err = ristretto.NewCache(&ristretto.Config[string, []elf.Symbol]{
+		NumCounters: config.CacheNumCounters,
+		MaxCost:     config.CacheSizeMB * 1024 * 1024, // cache size in MB.
+		BufferItems: 64,
+	})
+
+	if err != nil {
+		s.log.Error("failed to create cache", "error", err)
+		return nil
+	}
 	return s
+}
+
+func (s *Symbolizer) Close() {
+	s.elfCache.Close()
 }
 
 func getBuildID(prof *cprofiles.ExportProfilesServiceRequest, idx int32) string {
@@ -60,14 +90,17 @@ func (s *Symbolizer) resolveLocation(prof *cprofiles.ExportProfilesServiceReques
 		return
 	}
 
-	symbs, err := s.source.Symbols(buildID)
-	if err != nil {
-		//s.log.Warn("failed to read symbols from ELF file", "build_id", buildID, "error", err)
-		return
+	symbs, ok := s.elfCache.Get(buildID)
+	if !ok {
+		var err error
+		symbs, err = s.source.Symbols(buildID)
+		s.elfCache.Set(buildID, symbs, int64(unsafe.Sizeof(elf.Symbol{}))*int64(len(symbs)))
+		if err != nil {
+			return
+		}
 	}
 	var matched *elf.Symbol
 	normalizedAddr := normalizeAddr(loc.Address, prof.Dictionary.MappingTable[loc.MappingIndex])
-	// loop through symbols to find one that matches the location's address
 	for _, sym := range symbs {
 		if sym.Value <= normalizedAddr && normalizedAddr < sym.Value+sym.Size {
 			matched = &sym
@@ -78,13 +111,12 @@ func (s *Symbolizer) resolveLocation(prof *cprofiles.ExportProfilesServiceReques
 		return
 	}
 	mapKey := buildID + ":" + matched.Name
-	// check if the symbol has already been resolved
 	fnIdx, ok := resolved[mapKey]
 	if !ok {
 		// TODO: consider caching the demangled name to avoid repeated demangling for the same symbol
 		// TODO: consider possibility to configure filter options for demangling
 		demangled := demangle.Filter(matched.Name)
-		// fill dictionnary
+
 		prof.Dictionary.StringTable = append(prof.Dictionary.StringTable, matched.Name)
 		nameIdx := int32(len(prof.Dictionary.StringTable) - 1)
 		systemNameIdx := nameIdx
@@ -101,7 +133,6 @@ func (s *Symbolizer) resolveLocation(prof *cprofiles.ExportProfilesServiceReques
 		fnIdx = int32(len(prof.Dictionary.FunctionTable) - 1)
 		resolved[mapKey] = fnIdx
 	}
-	// add a Line to the Location for this symbol
 	loc.Lines = append(loc.Lines, &profilespb.Line{
 		FunctionIndex: fnIdx,
 		Line:          0,
@@ -110,10 +141,9 @@ func (s *Symbolizer) resolveLocation(prof *cprofiles.ExportProfilesServiceReques
 
 func (s *Symbolizer) symbolizeLocations(prof *cprofiles.ExportProfilesServiceRequest, stckIdx int32, resolved map[string]int32) {
 	stckTable := prof.Dictionary.StackTable[stckIdx]
-	// loop through the stack's locations
 	for _, locationIdx := range stckTable.LocationIndices {
 		loc := prof.Dictionary.LocationTable[locationIdx]
-		if len(loc.Lines) == 0 { // need symbolization
+		if len(loc.Lines) == 0 {
 			s.resolveLocation(prof, loc, resolved)
 		}
 	}
@@ -124,7 +154,7 @@ func (s *Symbolizer) Symbolize(prof *cprofiles.ExportProfilesServiceRequest) {
 		s.log.Debug("no stack traces to symbolize")
 		return
 	}
-	resolved := make(map[string]int32) // map of buildID to set of resolved symbol indices in the dictionary
+	resolved := make(map[string]int32)
 	for _, r := range prof.ResourceProfiles {
 		for _, sp := range r.ScopeProfiles {
 			for _, p := range sp.Profiles {
