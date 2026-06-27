@@ -62,7 +62,7 @@ func (s *Symbolizer) resolveLocation(prof *cprofiles.ExportProfilesServiceReques
 
 	symbs, err := s.source.Symbols(buildID)
 	if err != nil {
-		s.log.Warn("failed to read symbols from ELF file", "build_id", buildID, "error", err)
+		//s.log.Warn("failed to read symbols from ELF file", "build_id", buildID, "error", err)
 		return
 	}
 	var matched *elf.Symbol
@@ -82,7 +82,7 @@ func (s *Symbolizer) resolveLocation(prof *cprofiles.ExportProfilesServiceReques
 	fnIdx, ok := resolved[mapKey]
 	if !ok {
 		// TODO: consider caching the demangled name to avoid repeated demangling for the same symbol
-		// TODO: consider ability to configure filter options for demangling
+		// TODO: consider possibility to configure filter options for demangling
 		demangled := demangle.Filter(matched.Name)
 		// fill dictionnary
 		prof.Dictionary.StringTable = append(prof.Dictionary.StringTable, matched.Name)

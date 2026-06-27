@@ -43,6 +43,7 @@ func (e *OTLPHTTPExporter) Export(ctx context.Context, prof *cprofiles.ExportPro
 	if err != nil {
 		return fmt.Errorf("failed to create HTTP request: %w", err)
 	}
+	req.Header.Set("Content-Type", "application/x-protobuf")
 
 	resp, err := e.client.Do(req)
 	if err != nil {
