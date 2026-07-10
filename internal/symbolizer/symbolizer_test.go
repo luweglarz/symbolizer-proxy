@@ -55,8 +55,9 @@ func (fs *fakeSource) Symbols(buildID string) ([]elf.Symbol, error) {
 func testResolveLocation(t *testing.T, buildID string, addr uint64) {
 	prof := profWithBuildID("process.executable.build_id.gnu", buildID)
 	loc := &profilespb.Location{MappingIndex: 0, Address: addr}
-	symSource := &fakeSource{symbols: []elf.Symbol{{Name: "foo", Value: 0x1000, Size: 0x10}}}
-	s := New(slog.Default(), symSource)
+	symSource := &fakeSource{symbols: []elf.Symbol{{Name: "foo", Info: elf.ST_INFO(elf.STB_GLOBAL, elf.STT_FUNC), Value: 0x1000, Size: 0x10}}}
+	config := &Config{CacheNumCounters: 1e7, CacheSizeMB: 2048}
+	s := New(slog.Default(), symSource, *config)
 	resolved := make(map[string]int32)
 	s.resolveLocation(prof, loc, resolved)
 	if len(resolved) == 0 {
@@ -93,8 +94,9 @@ func TestResolveLocationDemangles(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			prof := profWithBuildID("process.executable.build_id.gnu", "testbuild")
 			loc := &profilespb.Location{MappingIndex: 0, Address: 0x1000}
-			symSource := &fakeSource{symbols: []elf.Symbol{{Name: tc.symName, Value: 0x1000, Size: 0x10}}}
-			s := New(slog.Default(), symSource)
+			symSource := &fakeSource{symbols: []elf.Symbol{{Name: tc.symName, Info: elf.ST_INFO(elf.STB_GLOBAL, elf.STT_FUNC), Value: 0x1000, Size: 0x10}}}
+			config := &Config{CacheNumCounters: 1e7, CacheSizeMB: 2048}
+			s := New(slog.Default(), symSource, *config)
 
 			s.resolveLocation(prof, loc, make(map[string]int32))
 

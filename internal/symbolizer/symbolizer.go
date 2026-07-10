@@ -3,6 +3,7 @@ package symbolizer
 import (
 	"debug/elf"
 	"flag"
+	"fmt"
 	"log/slog"
 	"unsafe"
 
@@ -24,7 +25,16 @@ func (fs *FileSource) Symbols(buildID string) ([]elf.Symbol, error) {
 		return nil, err
 	}
 	defer file.Close()
-	return file.Symbols()
+
+	symbs, symErr := file.Symbols()
+	if symErr != nil {
+		var dynSymErr error
+		symbs, dynSymErr = file.DynamicSymbols()
+		if dynSymErr != nil {
+			return nil, fmt.Errorf("failed to read symbols: %w, %w", symErr, dynSymErr)
+		}
+	}
+	return symbs, nil
 }
 
 type Config struct {
@@ -101,7 +111,11 @@ func (s *Symbolizer) resolveLocation(prof *cprofiles.ExportProfilesServiceReques
 	}
 	var matched *elf.Symbol
 	normalizedAddr := normalizeAddr(loc.Address, prof.Dictionary.MappingTable[loc.MappingIndex])
+	// TODO: Optimize O(n) search
 	for _, sym := range symbs {
+		if elf.ST_TYPE(sym.Info) != elf.STT_FUNC || sym.Name == "" {
+			continue
+		}
 		if sym.Value <= normalizedAddr && normalizedAddr < sym.Value+sym.Size {
 			matched = &sym
 			break
