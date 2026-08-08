@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"sort"
 	"unsafe"
 
 	"github.com/dgraph-io/ristretto/v2"
@@ -88,6 +89,23 @@ func getBuildID(prof *cprofiles.ExportProfilesServiceRequest, idx int32) string 
 	return ""
 }
 
+func binarySearchSymb(symbs []elf.Symbol, target uint64) *elf.Symbol {
+	lo, hi := 0, len(symbs)-1
+	for lo <= hi {
+		mid := lo + (hi-lo)/2
+
+		switch {
+		case symbs[mid].Value <= target && target < symbs[mid].Value+symbs[mid].Size:
+			return &symbs[mid]
+		case symbs[mid].Value < target:
+			lo = mid + 1
+		default:
+			hi = mid - 1
+		}
+	}
+	return nil
+}
+
 func normalizeAddr(addr uint64, mapping *profilespb.Mapping) uint64 {
 	// normalize the address by subtracting the mapping's memory start and adding the file offset
 	// example : if the mapping's memory start is 0x1000 and the file offset is 0x200, then an address of 0x1200 would be normalized to 0x400 (0x1200 - 0x1000 + 0x200)
@@ -104,26 +122,21 @@ func (s *Symbolizer) resolveLocation(prof *cprofiles.ExportProfilesServiceReques
 	if !ok {
 		var err error
 		symbs, err = s.source.Symbols(buildID)
+		sort.Slice(symbs, func(i, j int) bool {
+			return symbs[i].Value < symbs[j].Value
+		})
 		s.elfCache.Set(buildID, symbs, int64(unsafe.Sizeof(elf.Symbol{}))*int64(len(symbs)))
 		if err != nil {
 			return
 		}
 	}
-	var matched *elf.Symbol
 	normalizedAddr := normalizeAddr(loc.Address, prof.Dictionary.MappingTable[loc.MappingIndex])
-	// TODO: Optimize O(n) search
-	for _, sym := range symbs {
-		if elf.ST_TYPE(sym.Info) != elf.STT_FUNC || sym.Name == "" {
-			continue
-		}
-		if sym.Value <= normalizedAddr && normalizedAddr < sym.Value+sym.Size {
-			matched = &sym
-			break
-		}
-	}
+	matched := binarySearchSymb(symbs, normalizedAddr)
+
 	if matched == nil {
 		return
 	}
+
 	mapKey := buildID + ":" + matched.Name
 	fnIdx, ok := resolved[mapKey]
 	if !ok {
