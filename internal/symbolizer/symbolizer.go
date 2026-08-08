@@ -122,13 +122,14 @@ func (s *Symbolizer) resolveLocation(prof *cprofiles.ExportProfilesServiceReques
 	if !ok {
 		var err error
 		symbs, err = s.source.Symbols(buildID)
+		if err != nil {
+			s.log.Error("buildID not found:", "buildID", buildID, "error", err)
+			return
+		}
 		sort.Slice(symbs, func(i, j int) bool {
 			return symbs[i].Value < symbs[j].Value
 		})
 		s.elfCache.Set(buildID, symbs, int64(unsafe.Sizeof(elf.Symbol{}))*int64(len(symbs)))
-		if err != nil {
-			return
-		}
 	}
 	normalizedAddr := normalizeAddr(loc.Address, prof.Dictionary.MappingTable[loc.MappingIndex])
 	matched := binarySearchSymb(symbs, normalizedAddr)
